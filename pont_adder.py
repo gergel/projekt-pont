@@ -3,7 +3,7 @@ import time
 import requests
 
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
-MAIN_DB_ID = os.environ.get("MAIN_DB_ID")
+UTOMUNKA_DB_ID = os.environ.get("UTOMUNKA_DB_ID")
 VAGOK_DB_ID = os.environ.get("VAGOK_DB_ID")
 
 HEADERS = {
@@ -12,8 +12,8 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-def get_main_entries():
-    url = f"https://api.notion.com/v1/databases/{MAIN_DB_ID}/query"
+def get_utomunka_entries():
+    url = f"https://api.notion.com/v1/databases/{UTOMUNKA_DB_ID}/query"
     payload = {
         "filter": {
             "and": [
@@ -74,8 +74,8 @@ def update_project_points(vago_page_id, new_total):
     res = requests.patch(url, headers=HEADERS, json=payload)
     return res.status_code == 200
 
-def mark_as_processed(main_page_id):
-    url = f"https://api.notion.com/v1/pages/{main_page_id}"
+def mark_as_processed(UTOMUNKA_DB_ID):
+    url = f"https://api.notion.com/v1/pages/{UTOMUNKA_DB_ID}"
     payload = {
         "properties": {
             "jóváírva": {
