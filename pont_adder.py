@@ -96,9 +96,9 @@ def main():
         page_id = entry["id"]
         try:
             name = entry["properties"]["Aki ellenőrzésbe tette 1"]["people"][0]["name"]
-            points = entry["properties"]["jóváírandó pont"]["number"]
+            points = entry["properties"]["jóváirandó pont"]["number"]
         except (KeyError, IndexError, TypeError):
-            print("❗ Hiányos adat, kihagyva.")
+            print(f"❗ Hiányos adat: {entry['id']} - ellenőrzést végző: {entry['properties'].get('ellenőrzést végző')}, pont: {entry['properties'].get('jóváírandó pont')}")
             continue
 
         vago_id = get_vago_id_by_person_name(name)
