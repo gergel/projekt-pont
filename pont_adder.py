@@ -109,7 +109,11 @@ def main():
             continue
 
         current_points = get_current_project_points(vago_id)
+        if current_points is None:
+            current_points = 0  # ha még nincs érték, akkor 0-ról indul
+
         new_total = current_points + points
+
         updated = update_project_points(vago_id, new_total)
 
         if updated:
