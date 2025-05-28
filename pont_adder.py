@@ -45,17 +45,19 @@ def get_main_entries():
 
 def get_vago_id_by_person_name(name):
     url = f"https://api.notion.com/v1/databases/{VAGOK_DB_ID}/query"
-    payload = {
-        "filter": {
-            "property": "Person",
-            "people": {
-                "contains": name
-            }
-        }
-    }
-    res = requests.post(url, headers=HEADERS, json=payload)
-    results = res.json().get("results", [])
-    return results[0]["id"] if results else None
+    response = requests.post(url, headers=HEADERS)
+    results = response.json().get("results", [])
+
+    for item in results:
+        try:
+            vago_name = item["properties"]["Person"]["people"][0]["name"]
+            if vago_name.strip().lower() == name.strip().lower():
+                return item["id"]
+        except (KeyError, IndexError):
+            continue
+
+    return None
+
 
 def get_current_project_points(vago_page_id):
     url = f"https://api.notion.com/v1/pages/{vago_page_id}"
