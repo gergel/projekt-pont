@@ -16,12 +16,21 @@ def get_main_entries():
     url = f"https://api.notion.com/v1/databases/{MAIN_DB_ID}/query"
     payload = {
         "filter": {
-            "property": "ellenőrzés pont jóváírás",
-            "checkbox": {"equals": False}
+            "property": "Állapot",
+            "status": {
+                "equals": "Ellenőrzés"
+            }
         }
     }
     res = requests.post(url, headers=HEADERS, json=payload)
-    return res.json().get("results", [])
+    
+    data = res.json()
+    if "results" not in data:
+        print("❌ Nem jött vissza adat:", data)
+        return []
+
+    return data["results"]
+
 
 def get_vago_id_by_person_name(name):
     url = f"https://api.notion.com/v1/databases/{VAGOK_DB_ID}/query"
