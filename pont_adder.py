@@ -16,20 +16,31 @@ def get_main_entries():
     url = f"https://api.notion.com/v1/databases/{MAIN_DB_ID}/query"
     payload = {
         "filter": {
-            "property": "Állapot",
-            "status": {
-                "equals": "Ellenőrzés"
-            }
+            "and": [
+                {
+                    "property": "Állapot",
+                    "status": {
+                        "equals": "Ellenőrzés"
+                    }
+                },
+                {
+                    "property": "ellenőrzés pont jóváírás",
+                    "checkbox": {
+                        "equals": False
+                    }
+                }
+            ]
         }
     }
-    res = requests.post(url, headers=HEADERS, json=payload)
+    response = requests.post(url, headers=HEADERS, json=payload)
+    data = response.json()
     
-    data = res.json()
     if "results" not in data:
-        print("❌ Nem jött vissza adat:", data)
+        print("❌ Nincs találat vagy hiba:", data)
         return []
-
+    
     return data["results"]
+
 
 
 def get_vago_id_by_person_name(name):
@@ -82,10 +93,6 @@ def main():
 
 
     for entry in entries:
-        print(f"\n--- Beolvasott adat ---")
-        print(f"Név: {entry['properties']['ellenőrzést végző']['people']}")
-        print(f"Pont: {entry['properties']['jóváírandó pont']}")
-        print(f"Állapot: {entry['properties']['Állapot']}")
         page_id = entry["id"]
         try:
             name = entry["properties"]["Aki ellenőrzésbe tette 1"]["people"][0]["name"]
