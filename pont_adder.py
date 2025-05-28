@@ -12,7 +12,7 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-def get_utomunka_entries():
+def get_main_entries():
     url = f"https://api.notion.com/v1/databases/{UTOMUNKA_DB_ID}/query"
     payload = {
         "filter": {
