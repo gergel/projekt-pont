@@ -78,6 +78,11 @@ def main():
     print("🔁 Új jóváírás ellenőrzés...")
     entries = get_main_entries()
     print(f"📄 Feldolgozandó elemek: {len(entries)}")
+    print(f"\n--- Beolvasott adat ---")
+    print(f"Név: {entry['properties']['ellenőrzést végző']['people']}")
+    print(f"Pont: {entry['properties']['jóváírandó pont']}")
+    print(f"Állapot: {entry['properties']['Állapot']}")
+
 
     for entry in entries:
         page_id = entry["id"]
