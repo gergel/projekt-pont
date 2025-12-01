@@ -3,8 +3,8 @@ import time
 import requests
 
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
-DB1_ID = os.environ.get("DB1_ID")   # 1e7c9afdd53b809bbbe3d6aafae6fdc6
-DB2_ID = os.environ.get("DB2_ID")   # e23876f7f17b4fcbac6352b63303c7c8
+MAIN_DB_ID = "1e7c9afdd53b809bbbe3d6aafae6fdc6"
+CUTTERS_DB_ID = "e23876f7f17b4fcbac6352b63303c7c8"
 
 HEADERS = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
@@ -12,10 +12,70 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-# ------------------ HELPER: Query teljes adatbázis ------------------
-def query_database(db_id):
-    url = f"https://api.notion.com/v1/databases/{db_id}/query"
-    results = []
+# ----------------------------------------------------
+#  Helper: név átalakítás
+# ----------------------------------------------------
+def normalize_main_name(name_raw: str) -> str:
+    """
+    MAIN DB: @John Doe  →  John Doe  → Doe John
+    """
+    if not name_raw:
+        return ""
+
+    # @ levágása
+    if name_raw.startswith("@"):
+        name_raw = name_raw[1:]
+
+    parts = name_raw.strip().split()
+
+    if len(parts) == 1:
+        return parts[0]
+
+    # John Doe → Doe John
+    first = parts[0]
+    last = " ".join(parts[1:])
+    return f"{last} {first}".strip()
+
+
+# ----------------------------------------------------
+# Lekérjük a cutters név → pageID lookupot
+# ----------------------------------------------------
+def load_cutters_lookup():
+    url = f"https://api.notion.com/v1/databases/{CUTTERS_DB_ID}/query"
+    lookup = {}
+
+    has_more = True
+    cursor = None
+
+    while has_more:
+        payload = {}
+        if cursor:
+            payload["start_cursor"] = cursor
+
+        res = requests.post(url, headers=HEADERS, json=payload)
+        data = res.json()
+        results = data.get("results", [])
+
+        for row in results:
+            try:
+                full_name = row["properties"]["Full Name"]["title"][0]["plain_text"].strip()
+                lookup[full_name.lower()] = row["id"]
+            except:
+                continue
+
+        cursor = data.get("next_cursor")
+        has_more = data.get("has_more", False)
+
+    return lookup
+
+
+# ----------------------------------------------------
+# Main DB lekérése
+# ----------------------------------------------------
+def load_main_entries():
+    url = f"https://api.notion.com/v1/databases/{MAIN_DB_ID}/query"
+
+    all_results = []
     payload = {}
 
     while True:
@@ -23,89 +83,79 @@ def query_database(db_id):
         data = res.json()
 
         if "results" not in data:
-            print("❌ Hiba a lekérdezésnél:", data)
+            print("❌ Lekérési hiba:", data)
             break
 
-        results.extend(data["results"])
+        all_results.extend(data["results"])
 
         if data.get("has_more"):
             payload["start_cursor"] = data["next_cursor"]
         else:
             break
 
-    return results
+    return all_results
 
-# ------------------ DB2 Lookup készítése ------------------
-# DB2: Full Name → Page ID
-def build_db2_lookup():
-    lookup = {}
-    rows = query_database(DB2_ID)
 
-    for row in rows:
-        try:
-            full_name = row["properties"]["Full Name"]["title"][0]["plain_text"].strip()
-            lookup[full_name.lower()] = row["id"]
-        except (KeyError, IndexError, TypeError):
-            continue
-
-    print(f"📄 DB2 név-mapping kész: {len(lookup)} név")
-    return lookup
-
-# ------------------ DB1 bejárása + linkelés ------------------
-def link_editors(db2_lookup):
-    rows = query_database(DB1_ID)
-    print(f"📄 DB1 sorok száma: {len(rows)}")
-
-    updated = 0
-    skipped = 0
-
-    for row in rows:
-        page_id = row["id"]
-
-        # ---- 1) Name mező kinyerése DB1-ből ----
-        try:
-            raw_name = row["properties"]["Name"]["title"][0]["plain_text"].strip()
-        except (KeyError, IndexError, TypeError):
-            print(f"⚠️ Hiányzó Name mező: {page_id}")
-            continue
-
-        # Elől a @ eltávolítása
-        name_clean = raw_name.lstrip("@").strip().lower()
-
-        # ---- 2) Megnézzük, hogy benne van-e DB2-ben ----
-        if name_clean not in db2_lookup:
-            print(f"❌ Nincs egyezés DB2-ben: {raw_name}")
-            skipped += 1
-            continue
-
-        target_id = db2_lookup[name_clean]
-
-        # ---- 3) Kapcsolat frissítése a Vágó mezőben ----
-        update_payload = {
-            "properties": {
-                "Vágó": {
-                    "relation": [{"id": target_id}]
-                }
+# ----------------------------------------------------
+# Relations frissítése
+# ----------------------------------------------------
+def update_relation(page_id, cutter_page_id):
+    url = f"https://api.notion.com/v1/pages/{page_id}"
+    payload = {
+        "properties": {
+            "Vágó": {
+                "relation": [{"id": cutter_page_id}]
             }
         }
+    }
+    res = requests.patch(url, headers=HEADERS, json=payload)
+    return res.status_code == 200
 
-        url = f"https://api.notion.com/v1/pages/{page_id}"
-        res = requests.patch(url, headers=HEADERS, json=update_payload)
 
-        if res.status_code == 200:
-            updated += 1
-            print(f"✅ Linkelve: {raw_name} → {target_id}")
-        else:
-            print(f"⚠️ Sikertelen frissítés: {raw_name}, hiba: {res.text}")
-
-    print(f"\n🔚 Összegzés: {updated} frissítve, {skipped} kihagyva.")
-
-# ------------------ MAIN LOOP ------------------
+# ----------------------------------------------------
+# MAIN LOGIC
+# ----------------------------------------------------
 def main():
-    print("🔁 Név-összekapcsolás indul...")
-    db2_lookup = build_db2_lookup()
-    link_editors(db2_lookup)
+    print("🔁 Vágó kapcsolatok frissítése...")
 
+    cutters = load_cutters_lookup()
+    print(f"📄 Cutter nevekből betöltve: {len(cutters)} db")
+
+    main_entries = load_main_entries()
+    print(f"📄 Main DB sorok: {len(main_entries)} db")
+
+    linked = 0
+    missing = 0
+
+    for row in main_entries:
+        page_id = row["id"]
+        try:
+            raw_name = row["properties"]["Name"]["title"][0]["plain_text"]
+        except:
+            print(f"⚠️ Nincs Name mező: {page_id}")
+            continue
+
+        normalized = normalize_main_name(raw_name)
+        normalized_key = normalized.lower()
+
+        if normalized_key in cutters:
+            cutter_id = cutters[normalized_key]
+            ok = update_relation(page_id, cutter_id)
+            if ok:
+                linked += 1
+                print(f"✅ {raw_name}  →  {normalized} (match) – relation frissítve")
+            else:
+                print(f"❌ Nem sikerült frissíteni: {raw_name}")
+        else:
+            missing += 1
+            print(f"❗ Nincs egyezés: {raw_name}  → {normalized}")
+
+    print(f"🔚 Kész! Kapcsolva: {linked}, nem talált egyezés: {missing}")
+
+
+# ----------------------------------------------------
+# Loop a Railway-hez
+# ----------------------------------------------------
 if __name__ == "__main__":
     while True:
         main()
