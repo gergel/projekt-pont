@@ -1,1 +1,1 @@
-worker: python pont_adder.py
+worker: python pont_adder2.py
