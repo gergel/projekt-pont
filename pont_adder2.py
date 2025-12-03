@@ -17,12 +17,11 @@ HEADERS = {
 # ----------------------------------------------------
 def normalize_main_name(name_raw: str) -> str:
     """
-    MAIN DB: @John Doe  →  John Doe  → Doe John
+    MAIN DB: @John Doe  →  John Doe  → Doe John (surname first)
     """
     if not name_raw:
         return ""
 
-    # @ levágása
     if name_raw.startswith("@"):
         name_raw = name_raw[1:]
 
@@ -31,21 +30,19 @@ def normalize_main_name(name_raw: str) -> str:
     if len(parts) == 1:
         return parts[0]
 
-    # John Doe → Doe John
     first = parts[0]
     last = " ".join(parts[1:])
     return f"{last} {first}".strip()
 
 
 # ----------------------------------------------------
-# Lekérjük a cutters név → pageID lookupot
+# Lekérjük a CUTTERS DB lookup táblát
 # ----------------------------------------------------
 def load_cutters_lookup():
     url = f"https://api.notion.com/v1/databases/{CUTTERS_DB_ID}/query"
     lookup = {}
-
-    has_more = True
     cursor = None
+    has_more = True
 
     while has_more:
         payload = {}
@@ -54,9 +51,8 @@ def load_cutters_lookup():
 
         res = requests.post(url, headers=HEADERS, json=payload)
         data = res.json()
-        results = data.get("results", [])
 
-        for row in results:
+        for row in data.get("results", []):
             try:
                 full_name = row["properties"]["Full Name"]["title"][0]["plain_text"].strip()
                 lookup[full_name.lower()] = row["id"]
@@ -70,15 +66,30 @@ def load_cutters_lookup():
 
 
 # ----------------------------------------------------
-# Main DB lekérése
+# MAIN DB lekérése – csak azok ahol még nincs kapcsolat!
 # ----------------------------------------------------
-def load_main_entries():
+def load_main_entries_without_relation():
+    """
+    Csak olyan MAIN DB sorokat ad vissza,
+    ahol a 'Vágó' relation jelenleg ÜRES.
+    """
     url = f"https://api.notion.com/v1/databases/{MAIN_DB_ID}/query"
 
-    all_results = []
-    payload = {}
+    all_rows = []
+    cursor = None
+    has_more = True
 
-    while True:
+    while has_more:
+        payload = {
+            "filter": {
+                "property": "Vágó",
+                "relation": { "is_empty": True }
+            }
+        }
+
+        if cursor:
+            payload["start_cursor"] = cursor
+
         res = requests.post(url, headers=HEADERS, json=payload)
         data = res.json()
 
@@ -86,18 +97,16 @@ def load_main_entries():
             print("❌ Lekérési hiba:", data)
             break
 
-        all_results.extend(data["results"])
+        all_rows.extend(data["results"])
 
-        if data.get("has_more"):
-            payload["start_cursor"] = data["next_cursor"]
-        else:
-            break
+        cursor = data.get("next_cursor")
+        has_more = data.get("has_more", False)
 
-    return all_results
+    return all_rows
 
 
 # ----------------------------------------------------
-# Relations frissítése
+# Relation frissítése
 # ----------------------------------------------------
 def update_relation(page_id, cutter_page_id):
     url = f"https://api.notion.com/v1/pages/{page_id}"
@@ -116,19 +125,20 @@ def update_relation(page_id, cutter_page_id):
 # MAIN LOGIC
 # ----------------------------------------------------
 def main():
-    print("🔁 Vágó kapcsolatok frissítése...")
+    print("🔁 Vágó kapcsolatok frissítése (csak új elemek)...")
 
     cutters = load_cutters_lookup()
-    print(f"📄 Cutter nevekből betöltve: {len(cutters)} db")
+    print(f"📄 Összes vágó betöltve: {len(cutters)} db")
 
-    main_entries = load_main_entries()
-    print(f"📄 Main DB sorok: {len(main_entries)} db")
+    main_entries = load_main_entries_without_relation()
+    print(f"📄 MAIN DB — Kapcsolat nélküli elemek: {len(main_entries)} db")
 
     linked = 0
     missing = 0
 
     for row in main_entries:
         page_id = row["id"]
+
         try:
             raw_name = row["properties"]["Name"]["title"][0]["plain_text"]
         except:
@@ -140,21 +150,20 @@ def main():
 
         if normalized_key in cutters:
             cutter_id = cutters[normalized_key]
-            ok = update_relation(page_id, cutter_id)
-            if ok:
+            if update_relation(page_id, cutter_id):
                 linked += 1
-                print(f"✅ {raw_name}  →  {normalized} (match) – relation frissítve")
+                print(f"✅ {raw_name}  →  {normalized} – kapcsolat frissítve!")
             else:
                 print(f"❌ Nem sikerült frissíteni: {raw_name}")
         else:
             missing += 1
-            print(f"❗ Nincs egyezés: {raw_name}  → {normalized}")
+            print(f"❗ Nincs egyezés: {raw_name}  →  {normalized}")
 
-    print(f"🔚 Kész! Kapcsolva: {linked}, nem talált egyezés: {missing}")
+    print(f"\n🔚 Kész! Új kapcsolatok: {linked}, nem talált egyezés: {missing}\n")
 
 
 # ----------------------------------------------------
-# Loop a Railway-hez
+# Railway Loop
 # ----------------------------------------------------
 if __name__ == "__main__":
     while True:
