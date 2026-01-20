@@ -3,8 +3,8 @@ import time
 import requests
 
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
-MAIN_DB_ID = "1e7c9afdd53b809bbbe3d6aafae6fdc6"
-CUTTERS_DB_ID = "2bec9afdd53b80f38228ceb8ef3be35d"
+MAIN_DB_ID = "2bec9afdd53b80f38228ceb8ef3be35d"
+CUTTERS_DB_ID = "e23876f7f17b4fcbac6352b63303c7c8"
 
 HEADERS = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
